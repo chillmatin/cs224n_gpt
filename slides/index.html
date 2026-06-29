@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Building GPT-2 from Scratch — CS224N DFP</title>
+    <link rel="stylesheet" href="reveal/reveal.css" />
+    <link rel="stylesheet" href="reveal/white.css" id="theme" />
+    <link rel="stylesheet" href="reveal/monokai.css" />
+    <style>
+      :root {
+        --blue: #2563eb;
+        --green: #16a34a;
+        --red: #dc2626;
+        --amber: #f59e0b;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --grey: #e2e8f0;
+      }
+      .reveal {
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        color: var(--ink);
+      }
+      .reveal h1,
+      .reveal h2,
+      .reveal h3 {
+        color: var(--ink);
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        text-transform: none;
+      }
+      .reveal h1 {
+        font-size: 1.85em;
+        line-height: 1.1;
+      }
+      .reveal h2 {
+        font-size: 1.35em;
+        margin-bottom: 0.35em;
+      }
+      .reveal section img {
+        border: none;
+        box-shadow: none;
+        background: transparent;
+        margin: 0;
+      }
+      .reveal .muted {
+        color: var(--muted);
+      }
+      .reveal .small {
+        font-size: 0.72em;
+      }
+      .reveal .tiny {
+        font-size: 0.6em;
+      }
+      .reveal em {
+        color: var(--blue);
+        font-style: normal;
+        font-weight: 700;
+      }
+      /* layout helpers */
+      .row {
+        display: flex;
+        gap: 2rem;
+        align-items: center;
+        justify-content: center;
+      }
+      .col {
+        flex: 1;
+      }
+      .center {
+        text-align: center;
+      }
+      .left {
+        text-align: left;
+      }
+      /* metric callout chips */
+      .chips {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 0.4em;
+      }
+      .chip {
+        background: var(--grey);
+        border-radius: 14px;
+        padding: 0.5em 0.9em;
+        text-align: center;
+        min-width: 130px;
+      }
+      .chip .v {
+        font-size: 1.5em;
+        font-weight: 800;
+        color: var(--blue);
+        display: block;
+        line-height: 1;
+      }
+      .chip .l {
+        font-size: 0.62em;
+        color: var(--muted);
+      }
+      .chip.good .v {
+        color: var(--green);
+      }
+      /* pipeline */
+      .pipe {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+      }
+      .box {
+        background: #fff;
+        border: 3px solid var(--blue);
+        border-radius: 14px;
+        padding: 0.55em 0.8em;
+        font-weight: 700;
+      }
+      .box.core {
+        background: var(--blue);
+        color: #fff;
+      }
+      .box.ext {
+        border-color: var(--green);
+        color: var(--green);
+      }
+      .arrow {
+        color: var(--muted);
+        font-size: 1.6em;
+      }
+      /* token strips */
+      .tok {
+        display: inline-block;
+        padding: 0.28em 0.5em;
+        margin: 0.12em;
+        border-radius: 8px;
+        font-family: "SF Mono", Menlo, monospace;
+        font-size: 0.8em;
+      }
+      .tok.src {
+        background: var(--grey);
+        color: var(--muted);
+      }
+      .tok.tgt {
+        background: #dbeafe;
+        color: var(--blue);
+        font-weight: 700;
+      }
+      .tok.mask {
+        text-decoration: line-through;
+        opacity: 0.55;
+      }
+      .tag {
+        display: inline-block;
+        padding: 0.1em 0.45em;
+        border-radius: 6px;
+        font-family: monospace;
+        font-weight: 700;
+      }
+      .tag.yes {
+        background: #dcfce7;
+        color: var(--green);
+      }
+      .tag.no {
+        background: #fee2e2;
+        color: var(--red);
+      }
+      .reveal pre {
+        box-shadow: none;
+        font-size: 0.6em;
+        width: 100%;
+      }
+      .reveal pre code {
+        border-radius: 10px;
+        padding: 1em;
+        max-height: none;
+      }
+      .verse {
+        font-family: Georgia, serif;
+        font-style: italic;
+        color: #334155;
+        font-size: 0.8em;
+        line-height: 1.5;
+      }
+      table.qual {
+        font-size: 0.6em;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      table.qual td,
+      table.qual th {
+        border-bottom: 1px solid var(--grey);
+        padding: 0.4em 0.6em;
+        text-align: left;
+        vertical-align: top;
+      }
+      table.qual th {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .badge {
+        display: inline-block;
+        background: var(--amber);
+        color: #000;
+        font-weight: 800;
+        border-radius: 8px;
+        padding: 0.15em 0.6em;
+        font-size: 0.7em;
+      }
+      .footer {
+        position: absolute;
+        bottom: 0.6em;
+        left: 0;
+        right: 0;
+        font-size: 0.4em;
+        color: var(--muted);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <!-- 1. TITLE -->
+        <section data-background-color="#f8fafc">
+          <h1>Building GPT-2 from Scratch</h1>
+          <h3 class="muted" style="margin-top: 0.2em">
+            Cloze-Style Paraphrase Detection · Sonnet Generation ·<br />
+            a Stylistic Paraphrase Extension (Modern → Shakespearean)
+          </h3>
+          <p style="margin-top: 1.2em">
+            <strong>Hasan Semih Selçuk</strong> &nbsp;·&nbsp;
+            <strong>Matin Huseynzade</strong>
+          </p>
+          <p class="small muted">
+            CS224N Default Final Project · CENG-534, İzmir Institute of
+            Technology
+          </p>
+          <p class="small">
+            <span class="badge"
+              >No CUDA GPU — trained entirely on Apple Silicon (MPS)</span
+            >
+          </p>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Hello. Our project: we built GPT-2 from
+              scratch, fine-tuned it on three tasks, and added our own original
+              extension (modern English → Shakespearean). One key constraint: we
+              had no CUDA GPU — everything was trained on Apple Silicon / MPS, a
+              theme that recurs throughout. I'll cover it in ~10 minutes.
+            </p>
+            <p>
+              <strong>TR —</strong> Merhaba. Projemiz: GPT-2'yi sıfırdan kurduk,
+              üç görevde fine-tune ettik, ve kendi özgün uzantımızı (modern
+              İngilizce → Shakespeare) ekledik. Önemli bir kısıt: hiç CUDA
+              GPU'muz yoktu, her şeyi Apple Silicon / MPS üzerinde eğittik — bu
+              sunum boyunca dönecek bir tema. ~10 dakikada anlatacağım.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 2. PIPELINE -->
+        <section>
+          <h2>One backbone, four tasks</h2>
+          <div class="pipe" style="margin: 0.8em 0 1em">
+            <div class="box core">GPT-2<br />from scratch</div>
+            <span class="arrow">→</span>
+            <div class="box">Sentiment</div>
+            <div class="box">Paraphrase</div>
+            <div class="box">Sonnet</div>
+            <div class="box ext">Extension ★</div>
+          </div>
+          <p class="left small">
+            We built the primitives ourselves (attention, transformer block,
+            AdamW), then loaded pretrained weights and adapted them. The tasks
+            climb a ladder of generative difficulty: <em>classify</em> →
+            <em>cloze-classify</em> → <em>generate</em> →
+            <em>style-transfer</em>.
+          </p>
+          <div class="chips">
+            <div class="chip good">
+              <span class="v">0.967</span><span class="l">CFIMDB dev acc</span>
+            </div>
+            <div class="chip good">
+              <span class="v">0.889</span><span class="l">Quora dev acc</span>
+            </div>
+            <div class="chip good">
+              <span class="v">41.49</span><span class="l">Sonnet dev chrF</span>
+            </div>
+            <div class="chip good">
+              <span class="v">+21.97</span
+              ><span class="l">Extension chrF gain</span>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> One backbone, four tasks. The blue box on
+              the left: we built GPT-2 from its components, without calling a
+              library. The tasks on the right are a ladder of increasing
+              generative difficulty: classification → cloze classification →
+              generation → style transfer. The four numbers at the bottom are
+              today's headline results — keep them in mind, we'll hit each one
+              slide by slide.
+            </p>
+            <p>
+              <strong>TR —</strong> Tek bir omurga, dört görev. Soldaki mavi
+              kutu: GPT-2'yi kütüphane çağırmadan, bileşenlerinden kurduk.
+              Sağdaki görevler giderek zorlaşan bir üretim merdiveni:
+              sınıflandırma → cloze sınıflandırma → üretim → stil transferi.
+              Alttaki dört sayı bu sunumun vereceği ana sonuçlar — bunları
+              aklınızda tutun, slaytlarda tek tek geleceğiz.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 3. GPT-2 FROM SCRATCH -->
+        <section>
+          <h2>GPT-2, built from its primitives</h2>
+          <div class="row">
+            <div class="col center" style="flex: 1.05">
+              <img src="figs/architecture.png" style="width: 100%" />
+            </div>
+            <div class="col center" style="flex: 0.95">
+              <img src="figs/equations.png" style="width: 100%" />
+              <pre><code class="language-text">$ python optimizer_test.py
+Optimizer test passed!
+$ python sanity_check.py
+Your GPT2 implementation
+is correct!</code></pre>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> First, Part 1: GPT-2 from scratch. The
+              diagram on the left is the block we built: token + positional
+              embeddings, then twelve pre-LayerNorm decoder blocks, each with
+              masked multi-head attention and a GELU MLP wrapped in residual
+              connections (the orange skip arrows), a final LayerNorm, and an
+              output projection whose weights are tied to the embedding. We
+              wrote the attention formula and AdamW (bias-corrected moments +
+              decoupled weight decay) by hand. The two tests confirm we match
+              the course reference numerically. Move fast here — the interesting
+              part is fine-tuning and the extension.
+            </p>
+            <p>
+              <strong>TR —</strong> Önce Part 1: GPT-2'yi sıfırdan. Attention
+              formülünü kendimiz yazdık — causal mask geleceği kapatıyor, 12
+              başlı, pre-LayerNorm bloklar, çıkış projeksiyonu embedding'e
+              bağlı. AdamW'yi de elle yazdık: bias düzeltmeli momentler +
+              decoupled weight decay. Sağdaki iki test kursun referansıyla
+              sayısal olarak eşleştiğimizi doğruluyor. Bu slaytta hızlı geçin —
+              asıl ilginç kısım fine-tuning ve uzantı.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 4. SENTIMENT -->
+        <section>
+          <h2>Task 1 — Sentiment classification</h2>
+          <div class="row">
+            <div class="col">
+              <img src="figs/sentiment.png" style="width: 100%" />
+            </div>
+            <div class="col left small">
+              <p>
+                Predict the label from the <em>last-token</em> hidden state.
+              </p>
+              <p>
+                <strong>Full fine-tune &gt; frozen body</strong> on both
+                datasets — biggest jump on binary CFIMDB (+0.11).
+              </p>
+              <p>
+                We match the handout baselines (red dashes). The only real gap
+                is CFIMDB full (0.967 vs 0.976) — a gap we examine, and explain
+                what does <em>not</em> cause it, on slide 10.
+              </p>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Task 1, sentiment. We predict the label from
+              the last token's hidden state. Two regimes: frozen body (grey) vs
+              full fine-tune (blue). Full fine-tune wins everywhere, most on
+              binary CFIMDB. Red dashed lines are the handout baselines — we
+              matched almost all of them. The only real gap is CFIMDB full:
+              0.967 vs 0.976. Don't speculate here about the cause &mdash; just
+              flag it and say we investigate it on slide 10, where we test and
+              rule out the obvious batch-size explanation.
+            </p>
+            <p>
+              <strong>TR —</strong> Görev 1, sentiment. Etiketi son token'ın
+              gizli durumundan tahmin ediyoruz. İki rejim: gövde donuk (gri) vs
+              tam fine-tune (mavi). Tam fine-tune her yerde kazanıyor, en çok
+              ikili CFIMDB'de. Kırmızı kesikli çizgiler ödevin baseline'ları —
+              neredeyse hepsini tutturduk. Tek gerçek açık CFIMDB full: 0.967 vs
+              0.976. Burada sebep hakkında spekülasyon yapmayın &mdash; sadece
+              açığı işaret edin ve 11. slaytta incelediğimizi söyleyin; orada
+              bariz batch-size açıklamasını test edip eliyoruz.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 5. PARAPHRASE -->
+        <section>
+          <h2>Task 2 — Paraphrase as a cloze question</h2>
+          <p class="left small" style="margin-bottom: 0.3em">
+            Reduce binary classification to next-token prediction:
+          </p>
+          <div
+            class="center small"
+            style="
+              background: #f8fafc;
+              border-radius: 12px;
+              padding: 0.7em;
+              margin-bottom: 0.6em;
+            "
+          >
+            Is <span class="tok tgt">"…invest in share market?"</span> a
+            paraphrase of
+            <span class="tok tgt">"…invest in share market in india?"</span>?
+            &nbsp;→&nbsp; <span class="tag yes">yes = 8505</span> /
+            <span class="tag no">no = 3919</span>
+          </div>
+          <div class="row">
+            <div class="col">
+              <img src="figs/paraphrase.png" style="width: 92%" />
+            </div>
+            <div class="col left small">
+              <p><strong>Two design choices that mattered:</strong></p>
+              <p>
+                ① <em>Identical</em> cloze template at train &amp; test — a
+                mismatch silently inflated dev but tanked the held-out test
+                score.
+              </p>
+              <p>
+                ② <em>Left</em> truncation (max_len 128) keeps the end of the
+                prompt — where the answer is produced — and bounds MPS memory.
+              </p>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Task 2. The trick: reduce binary
+              classification to next-token prediction. We ask the model "is X a
+              paraphrase of Y?" and it generates "yes" or "no" — the autograder
+              expects token ids 8505 / 3919, which we match exactly. Two
+              critical design choices: first, the SAME template at train and
+              test — a mismatch inflated dev but tanked the held-out test score.
+              Second, LEFT truncation: it preserves the end of the cloze where
+              the answer is produced, and bounds memory. Result: 0.889 after
+              three epochs.
+            </p>
+            <p>
+              <strong>TR —</strong> Görev 2. Hile: ikili sınıflandırmayı
+              next-token tahminine indirgemek. Modele "X, Y'nin paraphrase'i
+              mi?" diye soruyoruz, o da "yes" ya da "no" üretiyor — autograder
+              bunları 8505 / 3919 token id'leriyle bekliyor, birebir uyduk. İki
+              kritik tasarım kararı: birincisi, train ve test'te AYNI şablon —
+              uyumsuzluk dev'i şişirip held-out test skorunu düşürüyordu.
+              İkincisi, SOL truncation: cloze'un cevap verdiği son kısmı koruyor
+              ve belleği sınırlıyor. Sonuç: üç epoch'ta 0.889.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 6. SONNET -->
+        <section>
+          <h2>Task 3 — Sonnet generation</h2>
+          <div class="row">
+            <div class="col">
+              <img src="figs/sonnet_temp.png" style="width: 100%" />
+            </div>
+            <div class="col left">
+              <p class="verse">
+                Those lips that Love's own hand did make<br />
+                Breathed forth the sound that said "I hate"<br />
+                To me that languished for her sake; …
+              </p>
+              <p class="small">
+                Condition on 3 lines, generate the rest with
+                <em>top-p</em> sampling. Sweep temperature: low → repetition,
+                high → drift. <em>τ = 1.0</em> is the sweet spot.
+              </p>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Task 3, sonnet generation. We condition on
+              the first 3 lines and generate the rest with top-p sampling. The
+              chart on the left is the decoding temperature sweep: low
+              temperature collapses into repetition (grey), high temperature
+              drifts; 1.0 is the sweet spot, dev chrF 41.49 — green. On the
+              right is a real sample from our own model: there's a sense of
+              rhyme and archaic language. This is the classic
+              generation/degeneration trade-off — practical evidence for
+              Holtzman's nucleus sampling paper.
+            </p>
+            <p>
+              <strong>TR —</strong> Görev 3, sonnet üretimi. İlk 3 satıra
+              koşullanıp gerisini top-p sampling ile üretiyoruz. Soldaki grafik
+              decoding sıcaklığı taraması: düşük sıcaklık tekrara düşüyor (gri),
+              yüksek sıcaklık savruluyor; 1.0 tatlı nokta, dev chrF 41.49 —
+              yeşil. Sağda kendi modelimizin ürettiği gerçek bir örnek: kafiye
+              hissi ve arkaik dil var. Bu da klasik üretim/dejenerasyon dengesi
+              — Holtzman'ın nucleus sampling makalesinin pratikteki kanıtı.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 7. EXTENSION IDEA -->
+        <section>
+          <h2>★ Extension — Modern → Shakespearean</h2>
+          <p class="left small">
+            From <em>detecting</em> a paraphrase to <em>producing</em> one in a
+            target style. Same <code>SonnetGPT</code> machinery —
+            <strong>no new model class.</strong> Data: Jhamtani "No Fear
+            Shakespeare", 18.4k parallel pairs.
+          </p>
+          <p class="center small muted" style="margin: 0.4em 0">
+            Source-side loss masking — train only on the target tokens:
+          </p>
+          <div
+            class="center"
+            style="background: #f8fafc; border-radius: 12px; padding: 0.7em"
+          >
+            <span class="tok src mask">Modern:</span>
+            <span class="tok src mask">I</span
+            ><span class="tok src mask">love…</span>
+            <span class="tok src mask">Shakespearean:</span>
+            <span class="tok tgt">My</span><span class="tok tgt">heart's</span
+            ><span class="tok tgt">love…</span>
+            <span class="tok tgt">&lt;eos&gt;</span>
+            <div class="tiny muted" style="margin-top: 0.4em">
+              <span style="color: var(--muted)"
+                >▦ masked (ignore_index = −100)</span
+              >
+              &nbsp;·&nbsp;
+              <span style="color: var(--blue)">■ loss computed here</span>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Here's the star: our extension. The idea is
+              to move from DETECTING a paraphrase to PRODUCING one in a target
+              style. Important: we wrote no new model class — we reused the
+              sonnet infrastructure, only the data and loss changed. Data:
+              Jhamtani's parallel Shakespeare corpus, 18k pairs. Key technique:
+              source-side loss masking. The struck-through grey tokens are the
+              prompt/source — we mask them with −100, and the loss comes ONLY
+              from the blue target (Shakespeare) tokens. So the model doesn't
+              memorize the source, it learns to produce the style.
+            </p>
+            <p>
+              <strong>TR —</strong> İşte yıldız: uzantımız. Fikir, paraphrase'i
+              TESPİT etmekten, hedef bir stilde ÜRETMEYE geçmek. Önemli: yeni
+              bir model sınıfı yazmadık — sonnet altyapısını aynen kullandık,
+              sadece veri ve loss değişti. Veri: Jhamtani'nin paralel
+              Shakespeare korpusu, 18 bin çift. Anahtar teknik: kaynak-tarafı
+              loss masking. Şeritte gri çizili tokenlar prompt/kaynak — bunları
+              -100 ile maskeliyoruz, loss SADECE mavi hedef (Shakespeare)
+              tokenlarından geliyor. Yani model kaynağı ezberlemiyor, stili
+              üretmeyi öğreniyor.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 8. EXTENSION RESULTS -->
+        <section>
+          <h2>★ Extension — it works</h2>
+          <div class="row">
+            <div class="col">
+              <img src="figs/extension.png" style="width: 100%" />
+            </div>
+            <div class="col">
+              <table class="qual">
+                <tr>
+                  <th>Modern</th>
+                  <th>Our model</th>
+                </tr>
+                <tr>
+                  <td>Holy Saint Francis, this is a drastic change!</td>
+                  <td>Saint Francis, this is a sudden change!</td>
+                </tr>
+                <tr>
+                  <td>Have you given up so quickly on Rosaline…?</td>
+                  <td>
+                    Have you no more of Rosalind, whom <em>thou loved</em> so
+                    much?
+                  </td>
+                </tr>
+              </table>
+              <p class="small">
+                Fine-tuning more than <strong>doubles</strong> chrF (13.85 →
+                35.83). The model adopts archaic forms —
+                <em>thou, doth, hath</em> — while keeping the meaning.
+              </p>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> And it works. Zero-shot GPT-2 is only 13.85
+              chrF; with fine-tuning, 35.83 — more than double, a +21.97 gain.
+              The examples on the right are qualitative evidence: the model
+              adopts archaic forms like "thou", "doth" while preserving meaning.
+              Errors are mostly rare sampling-induced repetition, not semantic
+              drift. This fits exactly the handout's definition of a small but
+              well-analyzed original contribution.
+            </p>
+            <p>
+              <strong>TR —</strong> Ve işe yarıyor. Zero-shot GPT-2 sadece 13.85
+              chrF; fine-tune ile 35.83 — iki katından fazla, +21.97 kazanım.
+              Sağdaki örnekler nitel kanıt: model "thou", "doth" gibi arkaik
+              biçimleri benimsiyor ama anlamı koruyor. Hatalar çoğunlukla
+              sampling kaynaklı nadir tekrar, anlam kayması değil. Bu, ödevin
+              istediği "küçük ama iyi analiz edilmiş özgün katkı" tanımına tam
+              oturuyor.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 9. STAR FINDING: BPE WHITESPACE -->
+        <section data-background-color="#fffbeb">
+          <h2>Analysis — a one-space, +6.3 chrF bug</h2>
+          <div class="row">
+            <div class="col">
+              <img src="figs/prompt_ablation.png" style="width: 100%" />
+            </div>
+            <div class="col left small">
+              <p>
+                GPT-2's BPE binds a leading space to the <em>next</em> token:
+                <span class="tok">" Shakespearean"</span> ≠
+                <span class="tok">"Shakespearean"</span>.
+              </p>
+              <p>
+                A prompt ending in a space (<code>"Shakespearean: "</code>)
+                forces the first step out-of-distribution → it emits junk
+                (<code>~~~~</code>, <code>----</code>).
+              </p>
+              <p>
+                <strong>Fix:</strong> move the space onto the target. One
+                character → <em>+6.3 chrF</em>.
+              </p>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> This is my favorite finding — emphasize it.
+              GPT-2's BPE attaches a leading space to the NEXT token: spaced
+              "Shakespearean" and unspaced are different tokens. When our prompt
+              ends with a space, the model's first step is out-of-distribution
+              and it emits junk — tildes, dashes. The fix: take the space off
+              the prompt and put it at the start of the target. One character,
+              +6.3 chrF. The message: understanding the tokenizer can be as
+              valuable as changing the architecture. Small but deep.
+            </p>
+            <p>
+              <strong>TR —</strong> Bu benim en sevdiğim bulgu — vurgulayın.
+              GPT-2'nin BPE'si baştaki boşluğu BİR SONRAKİ token'a katıyor:
+              boşluklu "Shakespearean" ile boşluksuzu farklı tokenlar.
+              Prompt'umuz boşlukla bitince, modelin ilk adımı dağılım-dışı
+              kalıyor ve çöp üretiyor — tilde'ler, tireler. Çözüm: boşluğu
+              prompt'tan alıp hedefin başına koymak. Tek karakter, +6.3 chrF.
+              Mesaj: tokenizer'ı anlamak mimariyi değiştirmek kadar değerli
+              olabilir. Küçük ama derin.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 10. SYSTEMS: MPS -->
+        <section>
+          <h2>Analysis — training without a GPU</h2>
+          <p class="left small">
+            Variable-length batches fragment the Apple
+            <strong>MPS</strong> allocator; the cached pool grows until it OOMs
+            (&gt;25 GiB on CFIMDB, a mid-epoch crash on Quora).
+          </p>
+          <div class="chips" style="margin: 0.6em 0">
+            <div class="chip">
+              <span class="v">①</span
+              ><span class="l">bound sequence length<br />+ small batch</span>
+            </div>
+            <div class="chip">
+              <span class="v">②</span
+              ><span class="l">periodic<br />empty_cache()</span>
+            </div>
+            <div class="chip">
+              <span class="v">③</span
+              ><span class="l">eval under<br />no_grad()</span>
+            </div>
+          </div>
+          <p class="left small">
+            With this recipe, full fine-tuning ran <em>stably</em> end-to-end on
+            a 24 GB MacBook — and it motivates parameter-efficient methods
+            (LoRA) as future work.
+          </p>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Second analysis, the engineering side:
+              training without a GPU. Variable-length batches fragment the MPS
+              memory allocator, the cache grows and OOMs — over 25 GiB on
+              CFIMDB, a mid-epoch crash on Quora. Our recipe is three steps:
+              bound the sequence length + small batch, periodic empty_cache, and
+              run eval under no_grad. With this, full fine-tuning ran stably
+              end-to-end on a 24 GB MacBook. It also motivates
+              parameter-efficient methods like LoRA as future work. We present
+              this as a practical recipe we found necessary for GPU-free
+              training, not as a novel method.
+            </p>
+            <p>
+              <strong>TR —</strong> İkinci analiz, mühendislik tarafı: GPU
+              olmadan eğitim. Değişken uzunluktaki batch'ler MPS bellek
+              ayırıcısını parçalıyor, cache şişip OOM veriyor — CFIMDB'de 25 GiB
+              üstü, Quora'da epoch ortası çökme. Reçetemiz üç adım: diziyi
+              sınırla + küçük batch, periyodik empty_cache, ve eval'i no_grad'a
+              al. Bununla 24 GB'lık bir MacBook'ta tam fine-tune uçtan uca
+              stabil çalıştı. Bu aynı zamanda LoRA gibi parametre-verimli
+              yöntemleri gelecek iş olarak motive ediyor. Bunu özgün bir yöntem
+              olarak değil, GPU'suz eğitim için gerekli bulduğumuz pratik bir
+              reçete olarak sunuyoruz.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 11. WHAT DIDN'T WORK / LIMITATIONS -->
+        <section data-background-color="#fef2f2">
+          <h2>What didn&rsquo;t work &mdash; and a hypothesis we tested</h2>
+          <div class="row" style="align-items: flex-start">
+            <div class="col left small">
+              <p><strong>Tested &amp; honest</strong></p>
+              <ul>
+                <li>
+                  <strong>Hypothesis tested, not confirmed:</strong> CFIMDB gap
+                  (0.967 vs 0.976) <em>not</em> closed by batch size &mdash;
+                  eff. batch 4&rarr;32 gave 0.959 (no gain; not converged, so
+                  not &ldquo;worse&rdquo; either). Cause unexplained,
+                  single-seed.
+                </li>
+                <li>
+                  All numbers <strong>single-run</strong> &mdash; small gaps
+                  (sonnet 1.0 vs 1.2) within noise.
+                </li>
+                <li>
+                  Sonnet corpus tiny (143) &rarr; overfits past ~2 epochs.
+                </li>
+                <li>
+                  chrF is n-gram (Holtzman caveat) &rarr; added held-out
+                  <strong>perplexity 99&rarr;59</strong> + corpus distinct-n.
+                </li>
+              </ul>
+            </div>
+            <div class="col left small">
+              <p><strong>Still open / future</strong></p>
+              <ul>
+                <li>Multi-seed runs + report mean&plusmn;std.</li>
+                <li>
+                  A cloze-vs-linear-head ablation to <em>prove</em> the design
+                  choice.
+                </li>
+                <li>MAUVE as a third generation metric alongside chrF.</li>
+                <li>
+                  LoRA for stable multi-epoch training on a larger backbone.
+                </li>
+              </ul>
+            </div>
+          </div>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Before the takeaways, a maturity slide. The
+              key point on the left: we didn&rsquo;t just list a limitation, we
+              tested one. We hypothesised the CFIMDB gap &mdash; 0.967 vs the
+              handout&rsquo;s 0.976 &mdash; came from the small batch we needed
+              for MPS memory. So we ran a controlled gradient-accumulation
+              experiment, effective batch 4 versus 32, everything else fixed. It
+              did not close the gap &mdash; 0.959, no improvement in the same
+              budget, and importantly the large-batch run hadn&rsquo;t
+              converged, so we don&rsquo;t claim it&rsquo;s worse, only that
+              batch size doesn&rsquo;t explain the gap. The cause is unexplained
+              and we only ran single seeds. We&rsquo;re also honest that
+              everything is single-run, the sonnet corpus is tiny and overfits,
+              and chrF is an n-gram metric Holtzman warns about &mdash; so we
+              added held-out perplexity, which fine-tuning drops from 99 to 59,
+              and corpus distinct-n as cross-checks. Still open: multi-seed
+              variance, a cloze-versus-linear-head ablation, MAUVE, and LoRA.
+              Testing a hypothesis and reporting that it failed makes the work
+              more credible, not less.
+            </p>
+            <p>
+              <strong>TR —</strong> Takeaway&rsquo;den önce bir olgunluk slaytı.
+              Soldaki ana nokta: sadece sınırlama saymadık, birini test ettik.
+              CFIMDB açığının &mdash; 0.967&rsquo;ye karşı handout&rsquo;ın
+              0.976&rsquo;sı &mdash; MPS belleği için kullandığımız küçük
+              batch&rsquo;ten geldiğini varsaydık. Kontrollü bir
+              gradient-accumulation deneyi koştuk: efektif batch 4&rsquo;e karşı
+              32, gerisi sabit. Gap&rsquo;i kapatmadı &mdash; 0.959, aynı
+              bütçede iyileşme yok; ve önemlisi büyük-batch koşusu
+              yakınsamamıştı, o yüzden &ldquo;daha kötü&rdquo; demiyoruz, sadece
+              batch&rsquo;in gap&rsquo;i açıklamadığını söylüyoruz. Sebep
+              belirsiz ve sadece tek seed koştuk. Ayrıca dürüstçe: her şey tek
+              koşu, sonnet korpusu küçük ve overfit ediyor, chrF
+              Holtzman&rsquo;ın uyardığı türden bir n-gram metriği &mdash; bu
+              yüzden held-out perplexity&rsquo;yi (fine-tuning 99&rsquo;dan
+              59&rsquo;a düşürüyor) ve corpus distinct-n&rsquo;i çapraz kontrol
+              olarak ekledik. Hâlâ açık: çok-seed varyansı, cloze-vs-linear-head
+              ablation&rsquo;ı, MAUVE ve LoRA. Bir hipotezi test edip başarısız
+              olduğunu raporlamak işi daha az değil, daha güvenilir yapar.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 12. CONCLUSION -->
+        <section data-background-color="#f8fafc">
+          <h2>Takeaways</h2>
+          <div class="chips" style="margin: 0.5em 0 1em">
+            <div class="chip good">
+              <span class="v">1 backbone</span
+              ><span class="l">4 tasks, GPT-2 from scratch</span>
+            </div>
+            <div class="chip good">
+              <span class="v">+21.97</span
+              ><span class="l">style-transfer extension (chrF)</span>
+            </div>
+            <div class="chip good">
+              <span class="v">+6.3</span
+              ><span class="l">BPE whitespace footgun (chrF)</span>
+            </div>
+            <div class="chip" style="background: #fee2e2">
+              <span class="v" style="color: #dc2626">single-run</span
+              ><span class="l">CFIMDB gap not isolated</span>
+            </div>
+          </div>
+          <p class="left small">
+            ① Built GPT-2 from scratch and adapted it across four tasks. &nbsp;
+            ② An original style-transfer extension with source-side masking
+            (+21.97 chrF). &nbsp; ③ The <em>BPE whitespace footgun</em> (+6.3
+            chrF) &mdash; understanding the tokenizer mattered as much as the
+            model. &nbsp; ④ <em>Honest limitation:</em> single-run results and
+            one open CFIMDB gap.
+          </p>
+          <p class="left small muted">
+            <strong>Future work:</strong> LoRA for a larger backbone (GPT-2
+            medium), DPO for sonnet quality, wider decoding search.
+          </p>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Let's wrap up with three findings and one
+              honest limitation. One: a single GPT-2 backbone we built from
+              scratch, adapted across four tasks. Two: an original
+              style-transfer extension with source-side masking, plus 21.97
+              chrF. Three: the BPE whitespace footgun — plus 6.3 chrF from one
+              space — understanding the tokenizer mattered as much as the model.
+              And the limitation: our results are single-run and the CFIMDB gap
+              is still open. Future work: LoRA for a larger model, DPO for
+              sonnet quality, a wider decoding search.
+            </p>
+            <p>
+              <strong>TR —</strong> Üç bulgu ve bir dürüst sınırlama ile
+              toparlayalım. Bir: sıfırdan kurduğumuz tek bir GPT-2 omurgasını
+              dört göreve uyarladık. İki: kaynak-tarafı masking ile özgün bir
+              stil-transfer uzantısı, artı 21.97 chrF. Üç: BPE boşluk bulgusu —
+              tek bir boşluktan artı 6.3 chrF — tokenizer'ı anlamak modeli
+              anlamak kadar önemliydi. Ve sınırlama: sonuçlarımız tek koşu ve
+              CFIMDB açığı hâlâ açık. Gelecek iş: LoRA ile daha büyük model, DPO
+              ile sonnet kalitesi, daha geniş decoding taraması.
+            </p>
+          </aside>
+        </section>
+
+        <!-- 12. THANKS -->
+        <section>
+          <h1>Thank you</h1>
+          <p class="muted">Questions?</p>
+          <p class="small">
+            Every number reproduces in seconds from committed artifacts:
+          </p>
+          <pre><code class="language-bash">conda activate cs224n_dfp
+python reproduce_metrics.py   # Tables 3–6, no retraining</code></pre>
+          <p class="tiny muted">
+            Hasan Semih Selçuk · Matin Huseynzade — CS224N DFP, CENG-534
+            (IZTECH)
+          </p>
+          <aside class="notes">
+            <p>
+              <strong>EN —</strong> Thank you, we're open to questions. One last
+              note: every number in our report reproduces in seconds from
+              committed artifacts — reproduce_metrics.py recomputes Tables 3–6
+              with one command, no retraining. Transparency and reproducibility.
+            </p>
+            <p>
+              <strong>TR —</strong> Teşekkürler, sorulara açığız. Son bir not:
+              raporumuzdaki her sayı, kaydedilmiş çıktılardan saniyeler içinde
+              yeniden üretilebiliyor — reproduce_metrics.py tek komutla Tablo
+              3-6'yı yeniden hesaplıyor, eğitim gerektirmeden. Şeffaflık ve
+              tekrarlanabilirlik.
+            </p>
+          </aside>
+        </section>
+      </div>
+    </div>
+
+    <script src="reveal/reveal.js"></script>
+    <script src="reveal/notes.js"></script>
+    <script src="reveal/highlight.js"></script>
+    <script>
+      Reveal.initialize({
+        width: 1280,
+        height: 720,
+        margin: 0.04,
+        hash: true,
+        slideNumber: "c/t",
+        transition: "slide",
+        plugins: [RevealNotes, RevealHighlight],
+      });
+    </script>
+  </body>
+</html>
